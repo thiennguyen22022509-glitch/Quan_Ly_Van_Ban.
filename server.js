@@ -7,19 +7,25 @@ require('dotenv').config();
 
 const app = express();
 
-// 1. CẤU HÌNH BIẾN MÔI TRƯỜNG (Chỉ khai báo 1 lần duy nhất ở đây)
+// 1. CẤU HÌNH BIẾN MÔI TRƯỜNG
 const FOLDER_ID = process.env.FOLDER_ID;
-// Sử dụng try-catch để tránh crash nếu biến môi trường bị dán sai định dạng
+
 let googleKey;
 try {
-    googleKey = JSON.parse(process.env.GOOGLE_KEY_JSON);
+    // Đọc biến môi trường từ Vercel
+    const rawKey = process.env.GOOGLE_KEY_JSON;
+    googleKey = JSON.parse(rawKey);
+    
+    // Sửa lỗi định dạng private_key do Vercel tự thêm dấu gạch chéo (\n thành \\n)
+    if (googleKey && googleKey.private_key) {
+        googleKey.private_key = googleKey.private_key.replace(/\\n/g, '\n');
+    }
 } catch (e) {
-    console.error("❌ Lỗi: GOOGLE_KEY_JSON không đúng định dạng JSON!");
+    console.error("❌ Lỗi: GOOGLE_KEY_JSON không đúng định dạng JSON!", e);
 }
 
 // 2. CẤU HÌNH MIDDLEWARE
 app.use(express.json());
-// Trỏ vào thư mục public nơi chứa file index.html
 app.use(express.static(path.join(__dirname, 'public'))); 
 
 // 3. CẤU HÌNH GOOGLE DRIVE
@@ -78,5 +84,4 @@ app.post('/api/documents', async (req, res) => {
     }
 });
 
-// QUAN TRỌNG: Xuất app để Vercel sử dụng
 module.exports = app;
