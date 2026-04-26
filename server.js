@@ -1,3 +1,6 @@
+// Đảm bảo đầu file server.js có các dòng này:
+const FOLDER_ID = process.env.FOLDER_ID;
+const googleKey = JSON.parse(process.env.GOOGLE_KEY_JSON);
 const express = require('express');
 const mongoose = require('mongoose');
 const { google } = require('googleapis');
