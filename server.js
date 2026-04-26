@@ -1,6 +1,3 @@
-// Đảm bảo đầu file server.js có các dòng này:
-const FOLDER_ID = process.env.FOLDER_ID;
-const googleKey = JSON.parse(process.env.GOOGLE_KEY_JSON);
 const express = require('express');
 const mongoose = require('mongoose');
 const { google } = require('googleapis');
@@ -9,25 +6,35 @@ const stream = require('stream');
 require('dotenv').config();
 
 const app = express();
-app.use(express.json());
-app.use(express.static('public')); // Đảm bảo các file html, css nằm trong thư mục public
 
-// 1. CẤU HÌNH DRIVE (Đọc từ Biến môi trường)
+// 1. CẤU HÌNH BIẾN MÔI TRƯỜNG (Chỉ khai báo 1 lần duy nhất ở đây)
 const FOLDER_ID = process.env.FOLDER_ID;
-const googleKey = JSON.parse(process.env.GOOGLE_KEY_JSON); // Đọc nội dung JSON từ biến
+// Sử dụng try-catch để tránh crash nếu biến môi trường bị dán sai định dạng
+let googleKey;
+try {
+    googleKey = JSON.parse(process.env.GOOGLE_KEY_JSON);
+} catch (e) {
+    console.error("❌ Lỗi: GOOGLE_KEY_JSON không đúng định dạng JSON!");
+}
 
+// 2. CẤU HÌNH MIDDLEWARE
+app.use(express.json());
+// Trỏ vào thư mục public nơi chứa file index.html
+app.use(express.static(path.join(__dirname, 'public'))); 
+
+// 3. CẤU HÌNH GOOGLE DRIVE
 const auth = new google.auth.JWT(
-    googleKey.client_email,
+    googleKey?.client_email,
     null,
-    googleKey.private_key,
+    googleKey?.private_key,
     ['https://www.googleapis.com/auth/drive']
 );
 const driveService = google.drive({ version: 'v3', auth });
 
-// 2. KẾT NỐI MONGODB
+// 4. KẾT NỐI MONGODB
 mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log("✅ Đã kết nối MongoDB!"))
-    .catch(err => console.error("❌ Lỗi MongoDB:", err));
+    .then(() => console.log("✅ Kết nối MongoDB thành công!"))
+    .catch(err => console.error("❌ Lỗi kết nối MongoDB:", err));
 
 const Document = mongoose.model('Document', new mongoose.Schema({
     title: String,
@@ -35,27 +42,41 @@ const Document = mongoose.model('Document', new mongoose.Schema({
     createdAt: { type: Date, default: Date.now }
 }));
 
-// 3. API LƯU VĂN BẢN
+// 5. API LƯU VĂN BẢN
 app.post('/api/documents', async (req, res) => {
     try {
         const { title, content } = req.body;
+        
+        if (!title || !content) {
+            return res.status(400).json({ message: "Thiếu tiêu đề hoặc nội dung!" });
+        }
+
         const bufferStream = new stream.PassThrough();
         bufferStream.end(content);
 
         const driveResponse = await driveService.files.create({
-            requestBody: { name: `${title}.txt`, parents: [FOLDER_ID] },
-            media: { mimeType: 'text/plain', body: bufferStream }
+            requestBody: { 
+                name: `${title}.txt`, 
+                parents: [FOLDER_ID] 
+            },
+            media: { 
+                mimeType: 'text/plain', 
+                body: bufferStream 
+            }
         });
 
-        const newDoc = new Document({ title, driveId: driveResponse.data.id });
+        const newDoc = new Document({ 
+            title, 
+            driveId: driveResponse.data.id 
+        });
         await newDoc.save();
 
-        res.json({ message: "🎉 Thành công! Đã lưu lên Cloud." });
+        res.json({ message: "🎉 Tuyệt vời! Đã lưu lên Cloud thành công." });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: "Lỗi lưu file!" });
+        console.error("Chi tiết lỗi:", error);
+        res.status(500).json({ message: "Lỗi lưu file!", error: error.message });
     }
 });
 
-// QUAN TRỌNG CHO VERCEL
+// QUAN TRỌNG: Xuất app để Vercel sử dụng
 module.exports = app;
